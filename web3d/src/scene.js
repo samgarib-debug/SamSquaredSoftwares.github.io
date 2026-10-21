@@ -95,8 +95,12 @@ export function mountCan(host, o) {
   canvas.tabIndex = 0;
   host.appendChild(canvas);
 
-  const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.75 : 2));
+  // failIfMajorPerformanceCaveat: no software WebGL; the page keeps its stills.
+  const renderer = new WebGLRenderer({
+    canvas, antialias: true, alpha: true, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: true,
+  });
+  // Phones: 1.5x is sharp at can size and draws about a quarter fewer pixels than 1.75x.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.5 : 2));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = NeutralToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -208,7 +212,9 @@ export function mountCan(host, o) {
 
   // ---------- labels ----------
   const textures = [];
-  const texWidth = small ? 1536 : 2048;
+  // Phones show the label at most about 500 device pixels across, so 1024 is
+  // enough and cuts drawing time and GPU memory by more than half.
+  const texWidth = small ? 1024 : 2048;
   function textureFor(i) {
     if (!textures[i]) {
       const t = new CanvasTexture(drawLabel(flavors[i], texWidth));
@@ -324,6 +330,7 @@ export function mountCan(host, o) {
   // ---------- loop ----------
   let raf = 0;
   let last = 0;
+  let lastDraw = 0;
   let visible = false;
   let running = false;
   let settle = 0;
@@ -342,6 +349,14 @@ export function mountCan(host, o) {
 
   function frame(now) {
     raf = 0;
+    // When nobody is touching the can, only the gentle float and bubbles
+    // move, and 30 frames a second looks the same at half the work.
+    const active = s.dragging || spin || s.vel !== 0 || settle > 0;
+    if (!active && readyFired && now - lastDraw < 32) {
+      if (running) raf = requestAnimationFrame(frame);
+      return;
+    }
+    lastDraw = now;
     const dt = last ? Math.min((now - last) / 1000, 0.05) : 1 / 60;
     last = now;
     const t = now / 1000;

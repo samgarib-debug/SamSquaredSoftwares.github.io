@@ -1,7 +1,9 @@
 // websites.html: scroll reveals, tilting package cards, the Fizzbok demo shop,
-// and the 3D cans. The 3D code (three.js) loads only when a 3D area is close
-// to the screen, on devices that support WebGL and are not saving data.
-// Without it, the same pages show still images of the cans.
+// and the 3D cans. The page first shows still images of the cans (renders of
+// the same scene). The 3D code (three.js) loads only after the visitor first
+// interacts, or a few seconds after the page has loaded, when a 3D area is
+// close to the screen, on devices with hardware WebGL that are not saving data.
+// Without it, the stills stay, so the page always works.
 import { FLAVORS, PACKS } from './flavors.js';
 
 const root = document.documentElement;
@@ -247,10 +249,32 @@ function hotspotsFor(el) {
 
 let scene3d = null; // promise of the 3D module, loaded once
 
+// True when the browser can draw WebGL on a real GPU. Software WebGL (no GPU,
+// blocked drivers, test machines) runs the scene on the main thread and makes
+// the whole page stutter, so those devices keep the still images. Checked
+// before the large scene code (three.js) is downloaded.
+function fastWebGL() {
+  try {
+    const c = document.createElement('canvas');
+    const attrs = { failIfMajorPerformanceCaveat: true };
+    const gl = c.getContext('webgl2', attrs) || c.getContext('webgl', attrs);
+    if (!gl) return false;
+    // Headless and some locked-down browsers still hand out a software context,
+    // so also read the renderer name.
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    const lose = gl.getExtension('WEBGL_lose_context');
+    if (lose) lose.loseContext(); // free the test context right away
+    return !/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  } catch (err) {
+    return false;
+  }
+}
+
 function load3D() {
   if (!scene3d) {
-    scene3d = import('./scene.js')
-      .then((mod) => (mod.supportsWebGL() ? mod : null))
+    scene3d = (fastWebGL() ? import('./scene.js') : Promise.resolve(null))
+      .then((mod) => (mod && mod.supportsWebGL() ? mod : null))
       .catch(() => null); // offline or blocked: the still images stay
   }
   return scene3d;
@@ -289,16 +313,41 @@ function mountStage(el, mod) {
   }
 }
 
-// Each 3D area starts when it comes close to the screen.
+// 3D waits until the page has painted and settled: the visitor's first touch,
+// scroll, key or mouse move, or 4 seconds after load. The stills look the same,
+// so nobody sees a gap, and the first screen never waits for three.js.
+// Then each 3D area starts when it comes close to the screen.
+function after3DGate(start) {
+  const events = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll', 'mousemove'];
+  const opts = { passive: true, capture: true };
+  let timer = 0;
+  let opened = false;
+  function open() {
+    if (opened) return;
+    opened = true;
+    events.forEach((ev) => window.removeEventListener(ev, open, opts));
+    clearTimeout(timer);
+    // let the event that opened the gate finish painting first
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
+    idle(start, { timeout: 600 });
+  }
+  events.forEach((ev) => window.addEventListener(ev, open, opts));
+  const later = () => { timer = setTimeout(open, 4000); };
+  if (document.readyState === 'complete') later();
+  else window.addEventListener('load', later, { once: true });
+}
+
 if (stages.length && !saveData && 'IntersectionObserver' in window) {
-  const near = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (!e.isIntersecting) return;
-      near.unobserve(e.target);
-      load3D().then((mod) => { if (mod) mountStage(e.target, mod); });
-    });
-  }, { rootMargin: '400px 0px' });
-  stages.forEach((el) => near.observe(el));
+  after3DGate(() => {
+    const near = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        near.unobserve(e.target);
+        load3D().then((mod) => { if (mod) mountStage(e.target, mod); });
+      });
+    }, { rootMargin: '400px 0px' });
+    stages.forEach((el) => near.observe(el));
+  });
 }
 
 // Hero colors start in sync even before 3D loads.
