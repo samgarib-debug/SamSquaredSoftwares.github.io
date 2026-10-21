@@ -197,6 +197,11 @@ form.contact input, form.contact textarea, form.contact select {
 form.contact input:focus, form.contact textarea:focus, form.contact select:focus {
   outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(46, 163, 255, .35);
 }
+form.contact .form-privacy { margin: 12px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); text-align: center; }
+form.contact .form-privacy a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Phone numbers never break across lines */
+a[href^="tel:"] { white-space: nowrap; }
 
 /* ---------- Footer ---------- */
 .footer { border-top: 1px solid var(--border); background: var(--bg-2); padding: 50px 0 30px; margin-top: 20px; }
@@ -537,6 +542,7 @@ form.contact .venue-opt label, .venue-opt label { display: inline; margin: 0; co
 .web-plans .plan.is-tilting:after { opacity: 1; }
 .web-plans .badge { position: absolute; top: -12px; left: 28px; margin: 0; }
 .web-plans .price-amount { margin: 10px 0 4px; color: var(--white); font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+.web-plans .price-amount small { font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
 .web-plans .plan-tag { margin: 0 0 18px; color: var(--blue-bright); font-size: 14.5px; font-weight: 600; }
 .web-plans .btn { text-align: center; }
 
