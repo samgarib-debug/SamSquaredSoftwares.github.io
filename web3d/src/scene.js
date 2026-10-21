@@ -329,6 +329,7 @@ export function mountCan(host, o) {
 
   // ---------- loop ----------
   let raf = 0;
+  let idleTimer = 0;
   let last = 0;
   let lastDraw = 0;
   let visible = false;
@@ -339,8 +340,24 @@ export function mountCan(host, o) {
   const n = new Vector3();
   const toCam = new Vector3();
 
+  // Idle frames (only the float and bubbles moving) wait on a timer, so the
+  // page wakes about 30 times a second instead of on every display refresh.
+  function stopIdle() {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = 0;
+  }
+
+  function scheduleIdle(ms) {
+    stopIdle();
+    idleTimer = setTimeout(function () {
+      idleTimer = 0;
+      if (running && !raf) raf = requestAnimationFrame(frame);
+    }, Math.max(0, ms));
+  }
+
   function wake() {
     settle = 45;
+    stopIdle();
     if (running && !raf) {
       last = 0;
       raf = requestAnimationFrame(frame);
@@ -353,7 +370,7 @@ export function mountCan(host, o) {
     // move, and 30 frames a second looks the same at half the work.
     const active = s.dragging || spin || s.vel !== 0 || settle > 0;
     if (!active && readyFired && now - lastDraw < 32) {
-      if (running) raf = requestAnimationFrame(frame);
+      if (running) scheduleIdle(32 - (now - lastDraw));
       return;
     }
     lastDraw = now;
@@ -439,7 +456,11 @@ export function mountCan(host, o) {
     if (settle > 0) settle -= 1;
     const busy = motion || s.dragging || spin || s.vel !== 0 || settle > 0 ||
       Math.abs(s.tilt - tiltGoal) > 0.001 || Math.abs(s.yawHover) > 0.001;
-    if (running && busy) raf = requestAnimationFrame(frame);
+    if (running && busy) {
+      const stillActive = s.dragging || spin || s.vel !== 0 || settle > 0;
+      if (stillActive) raf = requestAnimationFrame(frame);
+      else scheduleIdle(32);
+    }
   }
 
   function update() {
@@ -447,9 +468,12 @@ export function mountCan(host, o) {
     if (should === running) return;
     running = should;
     if (running) wake();
-    else if (raf) {
-      cancelAnimationFrame(raf);
-      raf = 0;
+    else {
+      stopIdle();
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
     }
   }
   const io = new IntersectionObserver(function (entries) {
@@ -463,6 +487,7 @@ export function mountCan(host, o) {
     e.preventDefault();
     host.classList.remove('is-live');
     running = false;
+    stopIdle();
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
   });
@@ -485,6 +510,7 @@ export function mountCan(host, o) {
       wake();
     },
     destroy() {
+      stopIdle();
       if (raf) cancelAnimationFrame(raf);
       running = false;
       io.disconnect();
