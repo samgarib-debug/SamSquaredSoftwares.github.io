@@ -2,6 +2,34 @@
    Navigation and footer markup now lives statically in each page; this file
    only wires up behaviour and keeps ARIA state in sync. */
 (function () {
+  // HubSpot (analytics, live chat, cookie banner) is several third-party
+  // scripts. Loaded in the <head> it slowed the first paint on phones by
+  // seconds. Pages opt in with data-hubspot="<portal id>" on this script's
+  // tag; HubSpot then loads on the visitor's first interaction, or 12 seconds
+  // after the page has loaded, whichever comes first, and only once.
+  var me = document.currentScript;
+  var hsPortal = me && me.getAttribute('data-hubspot');
+  if (hsPortal && /^\d+$/.test(hsPortal)) {
+    var hsEvents = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll', 'mousemove'];
+    var hsOpts = { passive: true, capture: true };
+    var hsTimer = 0;
+    var loadHubSpot = function () {
+      hsEvents.forEach(function (ev) { window.removeEventListener(ev, loadHubSpot, hsOpts); });
+      clearTimeout(hsTimer);
+      if (document.getElementById('hs-script-loader')) return;
+      var s = document.createElement('script');
+      s.id = 'hs-script-loader';
+      s.async = true;
+      s.defer = true;
+      s.src = 'https://js-eu1.hs-scripts.com/' + hsPortal + '.js';
+      document.body.appendChild(s);
+    };
+    hsEvents.forEach(function (ev) { window.addEventListener(ev, loadHubSpot, hsOpts); });
+    var hsLater = function () { hsTimer = setTimeout(loadHubSpot, 12000); };
+    if (document.readyState === 'complete') hsLater();
+    else window.addEventListener('load', hsLater, { once: true });
+  }
+
   function setExpanded(btn, open) {
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
