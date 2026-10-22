@@ -18,7 +18,7 @@ import sys
 
 # Files whose names never change, so they need a version in the URL.
 # (The web3d scene chunk already has a content hash in its file name.)
-STAMPED = ["styles.css", "script.js", "book.js", "assets/web3d/websites.js"]
+STAMPED = ["styles.css", "script.js", "book.js", "users.js", "assets/web3d/websites.js"]
 
 
 def stamp(path):

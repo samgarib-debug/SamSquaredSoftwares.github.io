@@ -21,13 +21,13 @@ from html.parser import HTMLParser
 SITE = "https://samsquaredsoftwares.com"
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
         "meta", "param", "source", "track", "wbr"}
-# 404.html is deliberately noindex and carries no canonical or social tags.
-NOINDEX = {"404.html"}
+# These pages are deliberately noindex and carry no canonical or social tags.
+NOINDEX = {"404.html", "users.html"}
 BARE_AMP = re.compile(r"&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);)")
 # Cloudflare tells browsers to keep CSS and JS for 4 hours, so these fixed-name
 # files carry ?v=<content hash> (scripts/stamp_assets.py). A missing or stale
 # stamp means returning visitors get the old file after a deploy.
-STAMPED = ("styles.css", "script.js", "book.js", "assets/web3d/websites.js")
+STAMPED = ("styles.css", "script.js", "book.js", "users.js", "assets/web3d/websites.js")
 
 
 def asset_stamp(path):

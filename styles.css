@@ -110,6 +110,10 @@ a:hover { color: var(--white); }
 .btn-icon { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
 .link-icon { display: inline-flex; align-items: center; gap: 7px; }
 .icon-chat { flex: 0 0 auto; }
+/* WhatsApp green, so people spot the chat option at a glance. */
+.btn-whatsapp { display: inline-flex; align-items: center; gap: 10px; background: #25d366; color: #04121f; box-shadow: 0 8px 30px rgba(37,211,102,.22); }
+.btn-whatsapp:hover { background: #4be083; color: #04121f; transform: translateY(-1px); }
+.btn-whatsapp svg { flex: none; }
 
 /* ---------- Hero ---------- */
 .hero {
@@ -194,6 +198,7 @@ a:hover { color: var(--white); }
 .contact-info .line { display: flex; gap: 10px; margin-bottom: 14px; }
 .contact-info .line b { color: var(--white); }
 .contact-info .note { margin-top: 24px; color: var(--muted); font-size: 14px; }
+.contact-info .btn-whatsapp { margin-top: 6px; }
 form.contact { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 30px; }
 form.contact label { display: block; font-size: 14px; margin: 0 0 6px; color: var(--muted); }
 form.contact input, form.contact textarea, form.contact select {
@@ -218,9 +223,90 @@ form.contact input:focus, form.contact textarea:focus, form.contact select:focus
 .footer ul a:hover { color: var(--blue-bright); }
 .footer-bottom { border-top: 1px solid var(--border); margin-top: 34px; padding-top: 22px; text-align: center; color: var(--muted); font-size: 13.5px; }
 
+/* ---------- Users & permissions ---------- */
+.users-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+.users-stats .card { padding: 18px 20px; }
+.users-stats .card:hover { transform: none; }
+.stat-num { display: block; font-size: 30px; font-weight: 700; color: var(--white); line-height: 1.1; }
+.stat-label { color: var(--muted); font-size: 14px; }
+.users-layout { display: grid; gap: 36px; }
+.invite-grid { display: grid; grid-template-columns: 1fr 1.3fr 1fr auto; gap: 0 16px; align-items: end; }
+.invite-submit .btn { margin-bottom: 18px; white-space: nowrap; }
+.users-add .users-msg:empty { display: none; }
+.users-layout > * { min-width: 0; }
+.users-layout h2 { margin: 0 0 16px; font-size: 20px; color: var(--white); }
+.users-msg { min-height: 1.4em; margin: 0 0 12px; font-size: 14px; }
+.users-msg.is-error { color: #ff8a8a; }
+.users-msg.is-ok { color: #6fe3a1; }
+.users-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.users-toolbar h2 { margin: 0 auto 0 0; }
+.users-toolbar input, .users-toolbar select, .users-table select {
+  padding: 9px 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: inherit; font-size: 14.5px;
+}
+.table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.users-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.users-table th, .users-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.users-table thead th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
+.users-table tbody tr:last-child > * { border-bottom: none; }
+.u-name { display: block; color: var(--white); font-weight: 600; }
+.u-email { display: block; color: var(--muted); font-size: 13px; }
+.u-actions { white-space: nowrap; text-align: right; }
+.users-table td:nth-child(5) { white-space: nowrap; }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12.5px; font-weight: 600; text-transform: capitalize; }
+.pill-active { background: rgba(111, 227, 161, .15); color: #6fe3a1; }
+.pill-invited { background: rgba(46, 163, 255, .15); color: var(--blue-bright); }
+.pill-suspended { background: rgba(255, 138, 138, .15); color: #ff8a8a; }
+.btn-sm { padding: 6px 12px; margin-left: 6px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer; }
+.btn-sm:hover { border-color: var(--blue); color: var(--white); }
+.btn-sm-danger:hover { border-color: #ff8a8a; color: #ff8a8a; }
+.users-empty { color: var(--muted); text-align: center; margin: 18px 0 0; }
+.perm-table { max-width: 900px; }
+.perm-table td { text-align: center; }
+.perm-table thead th:not(:first-child) { text-align: center; }
+.perm-table tbody th { font-weight: 500; color: var(--text); }
+.perm-yes { color: #6fe3a1; font-weight: 700; }
+.perm-no { color: var(--border); }
+
+.auth-card { max-width: 440px; margin: 0 auto; }
+.auth-card h2 { margin: 0 0 8px; font-size: 22px; color: var(--white); }
+.auth-card.card:hover { transform: none; }
+.auth-card p { color: var(--muted); }
+.auth-hint { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+.users-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.users-bar p { margin: 0 auto 0 0; color: var(--muted); }
+.users-bar b { color: var(--white); }
+.users-bar .btn-sm { margin-left: 0; }
+.users-subhead { margin: 36px 0 14px !important; }
+.tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 20px; background: var(--bg-2); border: 1px solid var(--border); color: var(--muted); font-size: 11.5px; font-weight: 600; vertical-align: middle; }
+.users-table td.warn { color: #ffc46b; }
+.users-table td.muted { color: var(--muted); }
+.users-table select:disabled { opacity: .6; cursor: not-allowed; }
+.btn-sm:disabled, .btn:disabled { opacity: .6; cursor: wait; }
+.venue-picker { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px 12px; margin: 0 0 18px; }
+.venue-picker legend { color: var(--muted); font-size: 14px; padding: 0 6px; }
+.venue-options { max-height: 240px; overflow-y: auto; }
+.venue-group { margin: 10px 0 4px; color: var(--muted); font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.venue-opt { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+form.contact .venue-opt input, .venue-opt input { width: auto; margin: 0; accent-color: var(--blue); }
+form.contact .venue-opt label, .venue-opt label { display: inline; margin: 0; color: var(--text); font-size: 15px; }
+.invite-next { margin-top: 16px; padding: 14px; border: 1px solid var(--blue-dim); border-radius: 10px; background: var(--bg-2); }
+.invite-next p { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+.invite-next .btn-sm { margin-left: 0; }
+.venue-dialog { width: min(480px, calc(100vw - 32px)); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; }
+.venue-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.venue-dialog h2 { margin: 0 0 8px; font-size: 20px; color: var(--white); }
+.vd-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.vd-actions .btn { border: none; font-family: inherit; }
+.vd-actions .btn-ghost { border: 1px solid var(--border); background: none; }
+.perm-foot { color: var(--muted); font-size: 14px; text-align: center; margin: 18px 0 0; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
-  .grid-3, .grid-2, .price-grid, .contact-grid, .footer-grid { grid-template-columns: 1fr; }
+  .grid-3, .grid-2, .price-grid, .contact-grid, .footer-grid, .users-layout { grid-template-columns: 1fr; }
+  .users-stats { grid-template-columns: repeat(2, 1fr); }
+  .invite-grid { grid-template-columns: 1fr; }
+  .table-wrap .users-table { min-width: 680px; }
   .nav-toggle { display: block; }
   .nav-links {
     position: absolute; top: 68px; left: 0; right: 0; flex-direction: column; align-items: stretch;
@@ -242,7 +328,7 @@ form.contact input:focus, form.contact textarea:focus, form.contact select:focus
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
   }
-  .card:hover, .btn-primary:hover { transform: none; }
+  .card:hover, .btn-primary:hover, .btn-whatsapp:hover { transform: none; }
 }
 
 /* ---------- Product modules (product.html, index.html) ---------- */

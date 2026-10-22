@@ -3,9 +3,11 @@
 # so the defaults (and the CNAME exclude github-pages adds) are repeated here.
 # workers/ holds Cloudflare Worker source, which is deployed separately.
 # web3d/ holds the source and build tooling for /assets/web3d/ (websites.html).
+# scripts/ holds CI tooling, which has no reason to be served to visitors.
 exclude:
   - workers/
   - web3d/
+  - scripts/
   - CNAME
   - Gemfile
   - Gemfile.lock
