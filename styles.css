@@ -622,6 +622,7 @@ form.contact input:focus, form.contact textarea:focus, form.contact select:focus
 .web-plans .plan.is-tilting:after { opacity: 1; }
 .web-plans .badge { position: absolute; top: -12px; left: 28px; margin: 0; }
 .web-plans .price-amount { margin: 10px 0 4px; color: var(--white); font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+.web-plans .price-amount.price-quote { font-size: 24px; letter-spacing: -0.3px; color: var(--blue-bright); }
 .web-plans .plan-tag { margin: 0 0 18px; color: var(--blue-bright); font-size: 14.5px; font-weight: 600; }
 .web-plans .btn { text-align: center; }
 
