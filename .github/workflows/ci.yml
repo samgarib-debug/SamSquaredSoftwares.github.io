@@ -37,7 +37,9 @@ jobs:
         run: python3 scripts/check_site.py
 
       - name: Check JavaScript syntax
-        run: node --check script.js
+        run: |
+          node --check script.js
+          node --check book.js
 
   # websites.html loads /assets/web3d/, which is built from web3d/src by esbuild.
   # Rebuild it and fail if the committed files are stale or hand-edited.
