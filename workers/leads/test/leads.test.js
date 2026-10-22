@@ -2,6 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index.js';
+import { publicHolidays } from '../src/booking.js';
 
 const SITE = 'https://samsquaredsoftwares.com';
 const ENDPOINT = SITE + '/api/lead';
@@ -66,8 +67,21 @@ describe('storing leads', () => {
       interest: 'Full POS',
       message: 'Two bars, one kitchen.',
       source: '/contact.html',
+      phone: null,
+      booking_type: null,
+      booking_slot: null,
+      address: null,
     });
     expect(row.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('ignores booking-only fields on a contact lead', async () => {
+    const { ip, email } = uniq();
+    const res = await post({ ip, body: formData(fields({ email, address: '1 Long St' })) });
+
+    expect(res.status).toBe(204);
+    const [row] = await rowsFor(email);
+    expect(row.address).toBeNull();
   });
 
   it('stores a url-encoded submission', async () => {
@@ -213,6 +227,157 @@ describe('Slack alert', () => {
   });
 });
 
+// A slot the /book page would offer: the next weekday that is not a public
+// holiday, at least two days out, so the test does not depend on the clock.
+function openDay(minDaysAhead = 2, skip = 0) {
+  const sast = Date.now() + 2 * 3600 * 1000;
+  let found = 0;
+  for (let i = minDaysAhead; i < 15; i++) {
+    const day = new Date(sast + i * 86400 * 1000);
+    const iso = day.toISOString().slice(0, 10);
+    const weekday = day.getUTCDay();
+    if (weekday === 0 || weekday === 6 || publicHolidays(day.getUTCFullYear()).has(iso)) continue;
+    if (found++ === skip) return iso;
+  }
+  throw new Error('no open day found');
+}
+
+function nextWeekend() {
+  const sast = Date.now() + 2 * 3600 * 1000;
+  for (let i = 1; i < 8; i++) {
+    const day = new Date(sast + i * 86400 * 1000);
+    if (day.getUTCDay() === 6) return day.toISOString().slice(0, 10);
+  }
+  throw new Error('unreachable');
+}
+
+function booking(overrides = {}) {
+  return fields({
+    interest: 'Online demo (30 min)',
+    message: 'Two bars, one kitchen.',
+    phone: '+27 64 000 0000',
+    type: 'online',
+    slot: `${openDay()}T10:00+02:00`,
+    day: openDay(),
+    ...overrides,
+  });
+}
+
+// Reads the body every time: workerd complains about responses left unread.
+async function postBooking(values, ip) {
+  const res = await post({ ip, referer: SITE + '/book', body: formData(values) });
+  const body = await res.text();
+  return { status: res.status, json: () => JSON.parse(body) };
+}
+
+describe('bookings from /book', () => {
+  it('stores an online demo and answers 201 with the booking', async () => {
+    const { ip, email } = uniq();
+    const slot = `${openDay()}T09:30+02:00`;
+    const res = await postBooking(booking({ email, slot, address: 'should be dropped' }), ip);
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true, booking: { type: 'online', slot } });
+    const [row] = await rowsFor(email);
+    expect(row).toMatchObject({
+      name: 'Ada Lovelace',
+      venue: 'The Engine Room',
+      phone: '+27 64 000 0000',
+      booking_type: 'online',
+      booking_slot: slot,
+      address: null,
+      message: 'Two bars, one kitchen.',
+      source: '/book',
+    });
+  });
+
+  it('stores an on-site call-out with its address', async () => {
+    const { ip, email } = uniq();
+    const slot = `${openDay()}T14:00+02:00`;
+    const res = await postBooking(booking({ email, type: 'onsite', slot, address: '1 Long St\r\nCape Town' }), ip);
+
+    expect(res.status).toBe(201);
+    const [row] = await rowsFor(email);
+    expect(row).toMatchObject({ booking_type: 'onsite', booking_slot: slot, address: '1 Long St\nCape Town' });
+  });
+
+  it.each([
+    ['type', { type: '' }, 'missing_field'],
+    ['type', { type: 'phone-call' }, 'invalid_type'],
+    ['slot', { slot: '' }, 'missing_field'],
+    ['venue', { venue: '' }, 'missing_field'],
+    ['phone', { phone: '' }, 'missing_field'],
+    ['address', { type: 'onsite', slot: '', address: '' }, 'missing_field'],
+    ['address', { address: 'x'.repeat(301) }, 'field_too_long'],
+  ])('rejects a booking with a bad %s (%o)', async (field, override, error) => {
+    const { ip, email } = uniq();
+    const values = booking({ email, ...override });
+    if (override.type === 'onsite') values.slot = `${openDay()}T10:00+02:00`;
+    const res = await postBooking(values, ip);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error, field });
+    expect(await rowsFor(email)).toHaveLength(0);
+  });
+
+  it.each([
+    ['a weekend', () => `${nextWeekend()}T10:00+02:00`, 'weekend'],
+    ['election day', () => '2026-11-04T10:00+02:00', 'public_holiday'],
+    ['before 09:00', () => `${openDay()}T08:30+02:00`, 'outside_hours'],
+    ['a call-out starting at 17:00', () => `${openDay()}T17:00+02:00`, 'outside_hours', 'onsite'],
+    ['quarter past', () => `${openDay()}T09:15+02:00`, 'off_grid'],
+    ['a past day', () => '2026-01-05T10:00+02:00', 'in_the_past'],
+    ['a month out', () => {
+      const day = new Date(Date.now() + 40 * 86400 * 1000);
+      while ([0, 6].includes(day.getUTCDay()) || publicHolidays(day.getUTCFullYear()).has(day.toISOString().slice(0, 10))) {
+        day.setUTCDate(day.getUTCDate() + 1);
+      }
+      return `${day.toISOString().slice(0, 10)}T10:00+02:00`;
+    }, 'too_far_ahead'],
+    ['UTC time', () => `${openDay()}T10:00Z`, 'bad_format'],
+  ])('refuses a slot on %s', async (_, makeSlot, reason, type = 'online') => {
+    const { ip, email } = uniq();
+    const res = await postBooking(booking({ email, type, slot: makeSlot(), address: '1 Long St' }), ip);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid_slot', field: 'slot', reason });
+    expect(await rowsFor(email)).toHaveLength(0);
+  });
+
+  it('stores a double-clicked booking once, and a second slot separately', async () => {
+    const { ip, email } = uniq();
+    const first = await postBooking(booking({ email }), ip);
+    const again = await postBooking(booking({ email }), ip);
+    const other = await postBooking(booking({ email, slot: `${openDay(2, 1)}T11:00+02:00` }), ip);
+
+    expect([first.status, again.status, other.status]).toEqual([201, 201, 201]);
+    expect(await rowsFor(email)).toHaveLength(2);
+    await vi.waitFor(() => expect(slack).toHaveBeenCalledTimes(2));
+  });
+
+  it('drops a booking from the honeypot quietly', async () => {
+    const { ip, email } = uniq();
+    const res = await postBooking(booking({ email, _honey: 'bot' }), ip);
+
+    expect(res.status).toBe(204);
+    expect(await rowsFor(email)).toHaveLength(0);
+  });
+
+  it('tells Slack it is a booking, with the slot, phone and address', async () => {
+    const { ip, email } = uniq();
+    const day = openDay();
+    await postBooking(booking({ email, type: 'onsite', slot: `${day}T15:00+02:00`, address: '1 Long St\nCape Town' }), ip);
+
+    await vi.waitFor(() => expect(slack).toHaveBeenCalledTimes(1));
+    const { text } = JSON.parse(slack.mock.calls[0][1].body);
+    expect(text).toContain('*New demo booking* from Ada Lovelace');
+    expect(text).toMatch(/On-site call-out \(60 min\), \w{3} \d{1,2} \w{3} \d{4} at 15:00 SAST/);
+    expect(text).toContain('The Engine Room | +27 64 000 0000');
+    expect(text).toContain('Address: 1 Long St, Cape Town');
+    expect(text).toContain('> Two bars, one kitchen.');
+  });
+});
+
 describe('spam and abuse', () => {
   it('drops honeypot hits quietly: 204, nothing stored, no Slack', async () => {
     const { ip, email } = uniq();
@@ -296,6 +461,9 @@ describe('validation', () => {
     ['name', { name: 'x'.repeat(201) }, 'field_too_long'],
     ['venue', { venue: 'x'.repeat(201) }, 'field_too_long'],
     ['interest', { interest: 'x'.repeat(101) }, 'field_too_long'],
+    ['phone', { phone: '1'.repeat(41) }, 'field_too_long'],
+    ['phone', { phone: 'call me' }, 'invalid_phone'],
+    ['phone', { phone: '082 123' }, 'invalid_phone'],
   ])('rejects a bad %s (%o)', async (field, override, error) => {
     const { ip, email } = uniq();
     const res = await post({ ip, body: formData(fields({ email, ...override })) });

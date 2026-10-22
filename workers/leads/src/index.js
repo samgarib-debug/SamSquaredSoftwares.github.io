@@ -1,7 +1,12 @@
-/* Lead capture for the contact form.
-   The form still posts to FormSubmit, which emails the team. script.js also
-   beacons a copy of each submission to POST /api/lead, and this Worker stores
-   it in D1 so every lead is kept somewhere we own, then optionally pings Slack. */
+/* Lead capture for the contact form and demo bookings.
+   The contact form still posts to FormSubmit, which emails the team. script.js
+   also beacons a copy of each submission to POST /api/lead. The /book page
+   posts its bookings here directly (book.js). This Worker stores each one in
+   D1 so every lead is kept somewhere we own, then optionally pings Slack and
+   copies it into HubSpot as a contact plus a deal (src/hubspot.js). */
+
+import { TYPES, describe, slotProblem } from './booking.js';
+import { syncLead } from './hubspot.js';
 
 const ENDPOINT = '/api/lead';
 // Room for a long message in any script (3 bytes per character in UTF-8).
@@ -9,17 +14,22 @@ const MAX_BODY_BYTES = 64 * 1024;
 const DUPLICATE_WINDOW = '-10 minutes';
 const INSERT_ATTEMPTS = 3;
 
-// Upper bounds match the maxlength attributes on contact.html. The message has
-// no maxlength there, so the email path keeps any length; the body cap bounds it.
+// Upper bounds match the maxlength attributes on contact.html and book.html.
+// The message has no maxlength on contact.html, so the email path keeps any
+// length; the body cap bounds it.
 const FIELDS = {
   name: { max: 200, required: true },
   email: { max: 254, required: true },
   venue: { max: 200 },
   interest: { max: 100 },
+  phone: { max: 40 },
+  address: { max: 300 },
   message: {},
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Digits with the usual separators: +27 64 514 7001, (064) 514-7001.
+const PHONE = /^\+?[\d\s().-]+$/;
 
 export default {
   async fetch(request, env, ctx) {
@@ -53,6 +63,22 @@ export default {
       lead[field] = value || null;
     }
     if (!EMAIL.test(lead.email)) return reply(400, { error: 'invalid_email', field: 'email' });
+    if (lead.phone && !validPhone(lead.phone)) return reply(400, { error: 'invalid_phone', field: 'phone' });
+
+    // A booking from /book carries a type and a slot. Anything else is a
+    // contact-form lead and keeps the old behaviour.
+    const type = text(form, 'type');
+    const slot = text(form, 'slot');
+    const booking = Boolean(type || slot);
+    if (booking) {
+      const problem = bookingProblem(type, slot, lead);
+      if (problem) return reply(400, problem);
+      if (type !== 'onsite') lead.address = null;
+    } else {
+      lead.address = null;
+    }
+    lead.booking_type = booking ? type : null;
+    lead.booking_slot = booking ? slot : null;
 
     lead.source = sourcePage(request, origin);
     lead.country = country(request);
@@ -72,22 +98,52 @@ export default {
     if (stored && env.SLACK_WEBHOOK_URL) {
       ctx.waitUntil(notifySlack(env.SLACK_WEBHOOK_URL, lead));
     }
+    // After the answer, never in its way: HubSpot trouble is logged, not shown.
+    if (stored) ctx.waitUntil(syncLead(env, lead, result.meta.last_row_id));
+    // Bookings get a body, so book.js can tell this Worker apart from an older
+    // one that would drop the slot and answer 204.
+    if (booking) return reply(201, { ok: true, booking: { type: lead.booking_type, slot: lead.booking_slot } });
     return reply(204);
   },
 };
 
+// Returns a 400 body when a booking cannot be taken, or null.
+function bookingProblem(type, slot, lead) {
+  if (!type) return { error: 'missing_field', field: 'type' };
+  if (!TYPES[type]) return { error: 'invalid_type', field: 'type' };
+  if (!slot) return { error: 'missing_field', field: 'slot' };
+  const reason = slotProblem(type, slot, Date.now());
+  if (reason) return { error: 'invalid_slot', field: 'slot', reason };
+  // We confirm bookings on WhatsApp or by phone, and need to know where to go.
+  if (!lead.venue) return { error: 'missing_field', field: 'venue' };
+  if (!lead.phone) return { error: 'missing_field', field: 'phone' };
+  if (type === 'onsite' && !lead.address) return { error: 'missing_field', field: 'address' };
+  return null;
+}
+
+function validPhone(value) {
+  const digits = value.replace(/\D/g, '').length;
+  return PHONE.test(value) && digits >= 9 && digits <= 15;
+}
+
 // Double clicks and resubmits within the window are stored once. That guard
-// also makes a retry safe if a failed attempt had in fact been written.
+// also makes a retry safe if a failed attempt had in fact been written. A
+// booking for a different slot is a different request, so the slot is part of
+// the match (IS compares NULLs as equal, so contact leads match as before).
 async function insertLead(db, lead) {
   const statement = db.prepare(
-    `INSERT INTO leads (name, email, venue, interest, message, source, country)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+    `INSERT INTO leads (name, email, venue, interest, message, source, country,
+                        phone, booking_type, booking_slot, address)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?9, ?10, ?11, ?12
      WHERE NOT EXISTS (
        SELECT 1 FROM leads
-       WHERE email = ?2 AND message IS ?5 AND created_at > datetime('now', ?8)
+       WHERE email = ?2 AND message IS ?5
+         AND booking_type IS ?10 AND booking_slot IS ?11
+         AND created_at > datetime('now', ?8)
      )`
   ).bind(lead.name, lead.email, lead.venue, lead.interest, lead.message,
-         lead.source, lead.country, DUPLICATE_WINDOW);
+         lead.source, lead.country, DUPLICATE_WINDOW,
+         lead.phone, lead.booking_type, lead.booking_slot, lead.address);
 
   for (let attempt = 1; ; attempt++) {
     try {
@@ -176,17 +232,24 @@ function country(request) {
 }
 
 async function notifySlack(webhook, lead) {
-  const lines = [
-    `*New demo request* from ${slack(lead.name)} (${slack(lead.email)})`,
-    [lead.venue, lead.interest].filter(Boolean).map(slack).join(' | '),
+  const lines = lead.booking_slot ? [
+    `*New demo booking* from ${slack(lead.name)} (${slack(lead.email)})`,
+    `*${slack(describe(lead.booking_type, lead.booking_slot))}*`,
+    [lead.venue, lead.phone].filter(Boolean).map(slack).join(' | '),
+    lead.address ? 'Address: ' + slack(lead.address).replace(/\n/g, ', ') : '',
     lead.message ? '> ' + slack(lead.message.slice(0, 500)).replace(/\n/g, '\n> ') : '',
-  ].filter(Boolean);
+  ] : [
+    `*New demo request* from ${slack(lead.name)} (${slack(lead.email)})`,
+    [lead.venue, lead.interest, lead.phone].filter(Boolean).map(slack).join(' | '),
+    lead.message ? '> ' + slack(lead.message.slice(0, 500)).replace(/\n/g, '\n> ') : '',
+  ];
+  const text = lines.filter(Boolean);
 
   try {
     const res = await fetch(webhook, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: lines.join('\n') }),
+      body: JSON.stringify({ text: text.join('\n') }),
     });
     if (!res.ok) log('slack.failed', { status: res.status });
   } catch (err) {
