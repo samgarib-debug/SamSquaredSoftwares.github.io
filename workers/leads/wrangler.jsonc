@@ -30,7 +30,9 @@
     "ALLOWED_ORIGINS": "https://samsquaredsoftwares.com,https://www.samsquaredsoftwares.com"
   },
 
-  // Optional secret: SLACK_WEBHOOK_URL (wrangler secret put SLACK_WEBHOOK_URL)
+  // Optional secrets: SLACK_WEBHOOK_URL and HUBSPOT_TOKEN
+  // (wrangler secret put <NAME>; see README.md). Optional vars for HubSpot:
+  // HUBSPOT_DEAL_STAGE and HUBSPOT_PIPELINE, to skip the pipeline lookup.
 
   // Keep only the Worker's own JSON log lines (event, row id, country).
   // Invocation logs and traces would record each visitor's user agent, city

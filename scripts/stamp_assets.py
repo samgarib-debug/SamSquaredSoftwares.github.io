@@ -6,7 +6,7 @@ the URL, anyone who visited in that window keeps the old file after a deploy,
 so new pages render with old styles. Each link gets ?v=<first 10 hex of the
 file's SHA-256>, so a changed file gets a new URL and is fetched fresh.
 
-Run after editing styles.css, script.js or the web3d bundle:
+Run after editing styles.css, script.js, book.js or the web3d bundle:
     python3 scripts/stamp_assets.py
 scripts/check_site.py fails in CI when a stamp is missing or stale.
 """
@@ -18,7 +18,7 @@ import sys
 
 # Files whose names never change, so they need a version in the URL.
 # (The web3d scene chunk already has a content hash in its file name.)
-STAMPED = ["styles.css", "script.js", "assets/web3d/websites.js"]
+STAMPED = ["styles.css", "script.js", "book.js", "assets/web3d/websites.js"]
 
 
 def stamp(path):

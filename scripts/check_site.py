@@ -27,7 +27,7 @@ BARE_AMP = re.compile(r"&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);)
 # Cloudflare tells browsers to keep CSS and JS for 4 hours, so these fixed-name
 # files carry ?v=<content hash> (scripts/stamp_assets.py). A missing or stale
 # stamp means returning visitors get the old file after a deploy.
-STAMPED = ("styles.css", "script.js", "assets/web3d/websites.js")
+STAMPED = ("styles.css", "script.js", "book.js", "assets/web3d/websites.js")
 
 
 def asset_stamp(path):
@@ -100,7 +100,13 @@ def local_path(href):
     path = href.split("#")[0].split("?")[0]
     if not path:
         return None
-    return "index.html" if path in ("/", "") else path.lstrip("/")
+    path = "index.html" if path in ("/", "") else path.lstrip("/")
+    # GitHub Pages serves /book from book.html when nothing is called "book",
+    # so the short form of a page link is a working link too.
+    if (not os.path.exists(path) and "." not in os.path.basename(path)
+            and os.path.exists(path + ".html")):
+        return path + ".html"
+    return path
 
 
 def check_page(name, src, errors):
@@ -179,7 +185,11 @@ def check_page(name, src, errors):
         bad("expected exactly one canonical, found %d" % len(canonicals))
 
     expected = SITE + ("/" if name == "index.html" else "/" + name)
-    if canonicals and canonicals[0] != expected:
+    # A page may claim its short URL (/book for book.html), which Pages serves too.
+    allowed = {expected}
+    if name != "index.html":
+        allowed.add(SITE + "/" + name[:-len(".html")])
+    if canonicals and canonicals[0] not in allowed:
         bad("canonical is %s, expected %s" % (canonicals[0], expected))
 
     for tag in ("og:title", "og:description", "og:url", "og:image",
